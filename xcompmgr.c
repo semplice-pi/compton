@@ -162,6 +162,7 @@ Bool            winTypeFade[NUM_WINTYPES];
 #define REGISTER_PROP   "_NET_WM_CM_S"
 
 #define TRANSLUCENT	0xe0000000
+#define INACTIVE_OPACITY 0xc0000000 /* 75% opacity */
 #define OPAQUE		0xffffffff
 
 conv            *gaussianMap;
@@ -1456,6 +1457,13 @@ get_opacity_percent(Display *dpy, win *w)
 }
 
 static void
+set_opacity_prop(Display *dpy, Window win, unsigned long opacity) {
+  XChangeProperty (dpy, win, opacityAtom,
+        XA_CARDINAL, 32, PropModeReplace,
+        (unsigned char *)&opacity, 1L);
+}
+
+static void
 determine_mode(Display *dpy, win *w)
 {
     int mode;
@@ -1570,9 +1578,51 @@ add_win (Display *dpy, Window id, Window prev)
 	map_win (dpy, id, new->damage_sequence - 1, True);
 }
 
+char
+is_normal_win(Display *dpy, win *w) {
+    if (!w) return 0;
+    if (w->windowType == None) {
+        w->windowType = get_wintype_prop(dpy, w->id);
+    }
+    return w->windowType == WINTYPE_NORMAL;
+}
+
+void
+set_inactives_transparent(Display *dpy, Window id) {
+    win	*w = find_win (dpy, id);
+    if (is_normal_win(dpy, w)) {
+        set_opacity_prop(dpy, w->id, INACTIVE_OPACITY);
+    }
+}
+
 void
 restack_win (Display *dpy, win *w, Window new_above)
 {
+    //if (w) {
+    if (is_normal_win(dpy, w)) {
+      //w->opacity = OPAQUE;
+      //w->damaged = 1;
+      //repair_win(dpy, w);
+      //map_win();
+
+      //long op;
+
+      // make the focused window opaque
+      //op = OPAQUE;
+      //XChangeProperty(
+      //  dpy, w->id, opacityAtom, XA_CARDINAL, 32,
+      //  PropModeReplace, (unsigned char *)&op, 1L);
+
+      set_opacity_prop(dpy, w->id, OPAQUE);
+
+      // the now inactive window becomes translucent
+      //op = INACTIVE_OPACITY;
+      //XChangeProperty(
+      //  dpy, new_above, opacityAtom, XA_CARDINAL, 32,
+      //  PropModeReplace, (unsigned char *)&op, 1L);
+      set_opacity_prop(dpy, new_above, INACTIVE_OPACITY);
+    }
+
     Window  old_above;
 
     if (w->next)
@@ -2096,6 +2146,8 @@ main (int argc, char **argv)
 	}
     }
 
+    //winTypeOpacity[WINTYPE_NORMAL] = INACTIVE_OPACITY / OPAQUE;
+
     if (noDockShadow)
         winTypeShadow[WINTYPE_DOCK] = False;
 
@@ -2234,6 +2286,7 @@ main (int argc, char **argv)
 		destroy_win (dpy, ev.xdestroywindow.window, True);
 		break;
 	    case MapNotify:
+                set_inactives_transparent (dpy, ev.xmap.window);
 		map_win (dpy, ev.xmap.window, ev.xmap.serial, True);
 		break;
 	    case UnmapNotify:
