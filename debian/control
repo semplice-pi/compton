@@ -1,0 +1,21 @@
+Source: compton
+Section: x11
+Priority: optional
+Maintainer: Eugenio Paolantonio (g7) <me@medesimo.eu>
+Build-Depends: debhelper (>= 8.0.0), libx11-dev, libxcomposite-dev,
+ libxdamage-dev, libxfixes-dev, libxext-dev, libxrender-dev,
+ libxrandr-dev, pkg-config, make, x11proto-core-dev, libpcre3-dev,
+ libconfig-dev, libdrm-dev, libgl1-mesa-dev, libdbus-1-dev, asciidoc
+Standards-Version: 3.9.4
+Homepage: https://github.com/chjj/compton
+Vcs-Git: git://github.com/semplice/compton.git
+Vcs-Browser: https://github.com/semplice/compton
+
+Package: compton
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, x11-utils
+Conflicts: compton-git
+Description: compton - A compositor for X11
+ Compton is a compositor for X, and a fork of xcompmgr-dana.
+ .
+ It fixes every bug found on it and adds some new features.
