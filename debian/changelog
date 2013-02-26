@@ -1,3 +1,9 @@
+compton (0.0.0~git20130205-2) unstable; urgency=low
+
+  * Added git and libxml2-utils to Build-Depends.
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Tue, 26 Feb 2013 15:40:43 +0100
+
 compton (0.0.0~git20130205-1) unstable; urgency=low
 
   * Initial release
