@@ -6,7 +6,7 @@ Build-Depends: debhelper (>= 8.0.0), libx11-dev, libxcomposite-dev,
  libxdamage-dev, libxfixes-dev, libxext-dev, libxrender-dev,
  libxrandr-dev, pkg-config, make, x11proto-core-dev, libpcre3-dev,
  libconfig-dev, libdrm-dev, libgl1-mesa-dev, libdbus-1-dev, asciidoc,
- git, libxml2-utils, docbook-xml
+ git, libxml2-utils, docbook-xml, docbook-utils
 Standards-Version: 3.9.4
 Homepage: https://github.com/chjj/compton
 Vcs-Git: git://github.com/semplice/compton.git
