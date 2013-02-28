@@ -1,3 +1,9 @@
+compton (0.0.0~git20130205-3) unstable; urgency=low
+
+  * Build-depend on docbook-xml.
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Thu, 28 Feb 2013 18:54:26 +0100
+
 compton (0.0.0~git20130205-2) unstable; urgency=low
 
   * Added git and libxml2-utils to Build-Depends.
