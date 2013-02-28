@@ -1,3 +1,9 @@
+compton (0.0.0~git20130205-4) unstable; urgency=low
+
+  * Build-depend on docbook-utils.
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Thu, 28 Feb 2013 19:13:04 +0100
+
 compton (0.0.0~git20130205-3) unstable; urgency=low
 
   * Build-depend on docbook-xml.
