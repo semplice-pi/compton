@@ -1,3 +1,10 @@
+compton (0.0.0~git20130205-5) unstable; urgency=low
+
+  * Going mad... added xmlto and dblatex to Build-Depends.
+    Let's hope these damned man pages will now build... :D
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Thu, 28 Feb 2013 19:34:07 +0100
+
 compton (0.0.0~git20130205-4) unstable; urgency=low
 
   * Build-depend on docbook-utils.
