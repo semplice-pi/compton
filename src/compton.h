@@ -22,7 +22,7 @@
 // We references some definitions in drm.h, which could also be found in
 // /usr/src/linux/include/drm/drm.h, but that path is probably even less
 // reliable than libdrm
-#include <libdrm/drm.h>
+#include <drm.h>
 #include <sys/ioctl.h>
 #include <errno.h>
 #endif
@@ -50,14 +50,6 @@ set_ignore_next(session_t *ps) {
 
 static int
 should_ignore(session_t *ps, unsigned long sequence);
-
-/**
- * Return the painting target window.
- */
-static inline Window
-get_tgt_window(session_t *ps) {
-  return ps->o.paint_on_overlay ? ps->overlay: ps->root;
-}
 
 /**
  * Reset filter on a <code>Picture</code>.
@@ -118,15 +110,40 @@ array_wid_exists(const Window *arr, int count, Window wid) {
 
   return false;
 }
+
 /**
- * Destroy a <code>XserverRegion</code>.
+ * Convert a geometry_t value to XRectangle.
  */
-inline static void
-free_region(session_t *ps, XserverRegion *p) {
-  if (*p) {
-    XFixesDestroyRegion(ps->dpy, *p);
-    *p = None;
-  }
+static inline XRectangle
+geom_to_rect(session_t *ps, const geometry_t *src, const XRectangle *def) {
+  XRectangle rect_def = { .x = 0, .y = 0,
+    .width = ps->root_width, .height = ps->root_height };
+  if (!def) def = &rect_def;
+
+  XRectangle rect = { .x = src->x, .y = src->y,
+    .width = src->wid, .height = src->hei };
+  if (src->wid < 0) rect.width = def->width;
+  if (src->hei < 0) rect.height = def->height;
+  if (-1 == src->x) rect.x = def->x;
+  else if (src->x < 0) rect.x = ps->root_width + rect.x + 2 - rect.width;
+  if (-1 == src->y) rect.y = def->y;
+  else if (src->y < 0) rect.y = ps->root_height + rect.y + 2 - rect.height;
+  return rect;
+}
+
+/**
+ * Convert a XRectangle to a XServerRegion.
+ */
+static inline XserverRegion
+rect_to_reg(session_t *ps, const XRectangle *src) {
+  if (!src) return None;
+  XRectangle bound = { .x = 0, .y = 0,
+    .width = ps->root_width, .height = ps->root_height };
+  XRectangle res = { };
+  rect_crop(&res, src, &bound);
+  if (res.width && res.height)
+    return XFixesCreateRegion(ps->dpy, &res, 1);
+  return None;
 }
 
 /**
@@ -164,33 +181,107 @@ free_damage(session_t *ps, Damage *p) {
   }
 }
 
-#ifdef CONFIG_C2
 /**
  * Destroy a condition list.
  */
 static inline void
 free_wincondlst(c2_lptr_t **pcondlst) {
+#ifdef CONFIG_C2
   while ((*pcondlst = c2_free_lptr(*pcondlst)))
     continue;
-}
 #endif
+}
+
+/**
+ * Check whether a paint_t contains enough data.
+ */
+static inline bool
+paint_isvalid(session_t *ps, const paint_t *ppaint) {
+  // Don't check for presence of Pixmap here, because older X Composite doesn't
+  // provide it
+  if (!ppaint)
+    return false;
+
+  if (BKEND_XRENDER == ps->o.backend && !ppaint->pict)
+    return false;
+
+#ifdef CONFIG_VSYNC_OPENGL
+  if (BKEND_GLX == ps->o.backend && !glx_tex_binded(ppaint->ptex, None))
+    return false;
+#endif
+
+  return true;
+}
+/**
+ * Bind texture in paint_t if we are using GLX backend.
+ */
+static inline bool
+paint_bind_tex(session_t *ps, paint_t *ppaint,
+    unsigned wid, unsigned hei, unsigned depth, bool force) {
+#ifdef CONFIG_VSYNC_OPENGL
+  if (BKEND_GLX == ps->o.backend) {
+    if (!ppaint->pixmap)
+      return false;
+
+    if (force || !glx_tex_binded(ppaint->ptex, ppaint->pixmap))
+      return glx_bind_pixmap(ps, &ppaint->ptex, ppaint->pixmap, wid, hei, depth);
+  }
+#endif
+
+  return true;
+}
+
+/**
+ * Free data in a reg_data_t.
+ */
+static inline void
+free_reg_data(reg_data_t *pregd) {
+  cxfree(pregd->rects);
+  pregd->rects = NULL;
+  pregd->nrects = 0;
+}
+
+/**
+ * Free paint_t.
+ */
+static inline void
+free_paint(session_t *ps, paint_t *ppaint) {
+  free_texture(ps, &ppaint->ptex);
+  free_picture(ps, &ppaint->pict);
+  free_pixmap(ps, &ppaint->pixmap);
+}
 
 /**
  * Destroy all resources in a <code>struct _win</code>.
  */
-inline static void
+static inline void
 free_win_res(session_t *ps, win *w) {
   free_region(ps, &w->extents);
-  free_pixmap(ps, &w->pixmap);
-  free_picture(ps, &w->picture);
+  free_paint(ps, &w->paint);
   free_region(ps, &w->border_size);
-  free_picture(ps, &w->shadow_pict);
+  free_paint(ps, &w->shadow_paint);
   free_damage(ps, &w->damage);
   free_region(ps, &w->reg_ignore);
   free(w->name);
   free(w->class_instance);
   free(w->class_general);
   free(w->role);
+#ifdef CONFIG_VSYNC_OPENGL_GLSL
+  free_glx_bc(ps, &w->glx_blur_cache);
+#endif
+}
+
+/**
+ * Free root tile related things.
+ */
+static inline void
+free_root_tile(session_t *ps) {
+  free_picture(ps, &ps->root_tile_paint.pict);
+  free_texture(ps, &ps->root_tile_paint.ptex);
+  if (ps->root_tile_fill)
+    free_pixmap(ps, &ps->root_tile_paint.pixmap);
+  ps->root_tile_paint.pixmap = None;
+  ps->root_tile_fill = false;
 }
 
 /**
@@ -226,8 +317,7 @@ make_text_prop(session_t *ps, char *str) {
     printf_errfq(1, "(): Failed to allocate memory.");
 
   if (XmbTextListToTextProperty(ps->dpy, &str, 1,  XStringStyle, pprop)) {
-    if (pprop->value)
-      XFree(pprop->value);
+    cxfree(pprop->value);
     free(pprop);
     pprop = NULL;
   }
@@ -273,8 +363,8 @@ presum_gaussian(session_t *ps, conv *map);
 static XImage *
 make_shadow(session_t *ps, double opacity, int width, int height);
 
-static Picture
-shadow_picture(session_t *ps, double opacity, int width, int height);
+static bool
+win_build_shadow(session_t *ps, win *w, double opacity);
 
 static Picture
 solid_picture(session_t *ps, bool argb, double a,
@@ -360,6 +450,17 @@ win_has_frame(const win *w) {
     || w->top_width || w->left_width || w->right_width || w->bottom_width;
 }
 
+static inline void
+wid_set_opacity_prop(session_t *ps, Window wid, long val) {
+  XChangeProperty(ps->dpy, wid, ps->atom_opacity, XA_CARDINAL, 32,
+      PropModeReplace, (unsigned char *) &val, 1);
+}
+
+static inline void
+wid_rm_opacity_prop(session_t *ps, Window wid) {
+  XDeleteProperty(ps->dpy, wid, ps->atom_opacity);
+}
+
 /**
  * Dump an drawable's info.
  */
@@ -377,24 +478,35 @@ dump_drawable(session_t *ps, Drawable drawable) {
   }
 }
 
-/**
- * Check if a window is a fullscreen window.
- *
- * It's not using w->border_size for performance measures.
- */
-static inline bool
-win_is_fullscreen(session_t *ps, const win *w) {
-  return (w->a.x <= 0 && w->a.y <= 0
-      && (w->a.x + w->widthb) >= ps->root_width
-      && (w->a.y + w->heightb) >= ps->root_height
-      && !w->bounding_shaped);
-}
-
 static void
 win_rounded_corners(session_t *ps, win *w);
 
-static void
-win_validate_pixmap(session_t *ps, win *w);
+/**
+ * Validate a pixmap.
+ *
+ * Detect whether the pixmap is valid with XGetGeometry. Well, maybe there
+ * are better ways.
+ */
+static inline bool
+validate_pixmap(session_t *ps, Pixmap pxmap) {
+  if (!pxmap) return false;
+
+  Window rroot = None;
+  int rx = 0, ry = 0;
+  unsigned rwid = 0, rhei = 0, rborder = 0, rdepth = 0;
+  return XGetGeometry(ps->dpy, pxmap, &rroot, &rx, &ry,
+        &rwid, &rhei, &rborder, &rdepth) && rwid && rhei;
+}
+
+/**
+ * Validate pixmap of a window, and destroy pixmap and picture if invalid.
+ */
+static inline void
+win_validate_pixmap(session_t *ps, win *w) {
+  // Destroy pixmap and picture, if invalid
+  if (!validate_pixmap(ps, w->paint.pixmap))
+    free_paint(ps, &w->paint);
+}
 
 /**
  * Wrapper of c2_match().
@@ -462,11 +574,11 @@ group_is_focused(session_t *ps, Window leader) {
 static win *
 recheck_focus(session_t *ps);
 
-static Picture
-root_tile_f(session_t *ps);
+static bool
+get_root_tile(session_t *ps);
 
 static void
-paint_root(session_t *ps, Picture tgt_buffer);
+paint_root(session_t *ps, XserverRegion reg_paint);
 
 static XserverRegion
 win_get_region(session_t *ps, win *w, bool use_offset);
@@ -490,7 +602,56 @@ static win *
 paint_preprocess(session_t *ps, win *list);
 
 static void
-paint_all(session_t *ps, XserverRegion region, win *t);
+render(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
+    double opacity, bool argb, bool neg,
+    Picture pict, glx_texture_t *ptex,
+    XserverRegion reg_paint, const reg_data_t *pcache_reg);
+
+static inline void
+win_render(session_t *ps, win *w, int x, int y, int wid, int hei, double opacity, XserverRegion reg_paint, const reg_data_t *pcache_reg, Picture pict) {
+  const int dx = (w ? w->a.x: 0) + x;
+  const int dy = (w ? w->a.y: 0) + y;
+  const bool argb = (w && w->mode == WMODE_ARGB);
+  const bool neg = (w && w->invert_color);
+
+  render(ps, x, y, dx, dy, wid, hei, opacity, argb, neg,
+      pict, (w ? w->paint.ptex: ps->root_tile_paint.ptex), reg_paint, pcache_reg);
+}
+
+static inline void
+set_tgt_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
+  switch (ps->o.backend) {
+    case BKEND_XRENDER:
+      XFixesSetPictureClipRegion(ps->dpy, ps->tgt_buffer, 0, 0, reg);
+      break;
+#ifdef CONFIG_VSYNC_OPENGL
+    case BKEND_GLX:
+      glx_set_clip(ps, reg, pcache_reg);
+      break;
+#endif
+  }
+}
+
+static bool
+xr_blur_dst(session_t *ps, Picture tgt_buffer,
+    int x, int y, int wid, int hei, XFixed **blur_kerns,
+    XserverRegion reg_clip);
+
+/**
+ * Normalize a convolution kernel.
+ */
+static inline void
+normalize_conv_kern(int wid, int hei, XFixed *kern) {
+  double sum = 0.0;
+  for (int i = 0; i < wid * hei; ++i)
+    sum += XFixedToDouble(kern[i]);
+  double factor = 1.0 / sum;
+  for (int i = 0; i < wid * hei; ++i)
+    kern[i] = XDoubleToFixed(XFixedToDouble(kern[i]) * factor);
+}
+
+static void
+paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t);
 
 static void
 add_damage(session_t *ps, XserverRegion damage);
@@ -595,6 +756,12 @@ win_update_prop_shadow(session_t *ps, win *w);
 
 static void
 win_determine_shadow(session_t *ps, win *w);
+
+static void
+win_determine_invert_color(session_t *ps, win *w);
+
+static void
+win_determine_blur_background(session_t *ps, win *w);
 
 static void
 win_on_wtype_change(session_t *ps, win *w);
@@ -702,43 +869,10 @@ ev_window(session_t *ps, XEvent *ev);
 #endif
 
 static void __attribute__ ((noreturn))
-usage(void);
+usage(int ret);
 
 static bool
-register_cm(session_t *ps, bool glx);
-
-#ifdef CONFIG_VSYNC_OPENGL
-/**
- * Ensure we have a GLX context.
- */
-static inline bool
-ensure_glx_context(session_t *ps) {
-  if (ps->glx_context)
-    return true;
-
-  // Check for GLX extension
-  if (!ps->glx_exists) {
-    if (glXQueryExtension(ps->dpy, &ps->glx_event, &ps->glx_error))
-      ps->glx_exists = true;
-    else {
-      printf_errf("(): No GLX extension.");
-      return false;
-    }
-  }
-
-  // Create GLX context
-  if (ps->reg_win) {
-    XDestroyWindow(ps->dpy, ps->reg_win);
-    ps->reg_win = None;
-  }
-  if (!register_cm(ps, true) || !ps->glx_context) {
-    printf_errf("(): Failed to acquire GLX context.");
-    return false;
-  }
-
-  return true;
-}
-#endif
+register_cm(session_t *ps);
 
 inline static void
 ev_focus_in(session_t *ps, XFocusChangeEvent *ev);
@@ -797,20 +931,70 @@ get_screen_region(session_t *ps) {
 }
 
 /**
+ * Resize a region.
+ */
+static inline void
+resize_region(session_t *ps, XserverRegion region, short mod) {
+  if (!mod || !region) return;
+
+  int nrects = 0, nnewrects = 0;
+  XRectangle *newrects = NULL;
+  XRectangle *rects = XFixesFetchRegion(ps->dpy, region, &nrects);
+  if (!rects || !nrects)
+    goto resize_region_end;
+
+  // Allocate memory for new rectangle list, because I don't know if it's
+  // safe to write in the memory Xlib allocates
+  newrects = calloc(nrects, sizeof(XRectangle));
+  if (!newrects) {
+    printf_errf("(): Failed to allocate memory.");
+    exit(1);
+  }
+
+  // Loop through all rectangles
+  for (int i = 0; i < nrects; ++i) {
+    int x1 = max_i(rects[i].x - mod, 0);
+    int y1 = max_i(rects[i].y - mod, 0);
+    int x2 = min_i(rects[i].x + rects[i].width + mod, ps->root_width);
+    int y2 = min_i(rects[i].y + rects[i].height + mod, ps->root_height);
+    int wid = x2 - x1;
+    int hei = y2 - y1;
+    if (wid <= 0 || hei <= 0)
+      continue;
+    newrects[nnewrects].x = x1;
+    newrects[nnewrects].y = y1;
+    newrects[nnewrects].width = wid;
+    newrects[nnewrects].height = hei;
+    ++nnewrects;
+  }
+
+  // Set region
+  XFixesSetRegion(ps->dpy, region, newrects, nnewrects);
+
+resize_region_end:
+  cxfree(rects);
+  free(newrects);
+}
+
+/**
  * Dump a region.
  */
 static inline void
 dump_region(const session_t *ps, XserverRegion region) {
-  int nrects = 0, i;
-  XRectangle *rects = XFixesFetchRegion(ps->dpy, region, &nrects);
-  if (!rects)
-    return;
+  int nrects = 0;
+  XRectangle *rects = NULL;
+  if (!rects && region)
+    rects = XFixesFetchRegion(ps->dpy, region, &nrects);
 
-  for (i = 0; i < nrects; ++i)
+  printf_dbgf("(%#010lx): %d rects\n", region, nrects);
+  if (!rects) return;
+  for (int i = 0; i < nrects; ++i)
     printf("Rect #%d: %8d, %8d, %8d, %8d\n", i, rects[i].x, rects[i].y,
         rects[i].width, rects[i].height);
+  putchar('\n');
+  fflush(stdout);
 
-  XFree(rects);
+  cxfree(rects);
 }
 
 /**
@@ -821,13 +1005,21 @@ dump_region(const session_t *ps, XserverRegion region) {
  *
  * @param ps current session
  * @param region region to check for
+ * @param pcache_rects a place to cache the dumped rectangles
+ * @param ncache_nrects a place to cache the number of dumped rectangles
  */
 static inline bool
-is_region_empty(const session_t *ps, XserverRegion region) {
+is_region_empty(const session_t *ps, XserverRegion region,
+    reg_data_t *pcache_reg) {
   int nrects = 0;
   XRectangle *rects = XFixesFetchRegion(ps->dpy, region, &nrects);
 
-  XFree(rects);
+  if (pcache_reg) {
+    pcache_reg->rects = rects;
+    pcache_reg->nrects = nrects;
+  }
+  else
+    cxfree(rects);
 
   return !nrects;
 }
@@ -919,6 +1111,20 @@ swopti_init(session_t *ps);
 static void
 swopti_handle_timeout(session_t *ps, struct timeval *ptv);
 
+#ifdef CONFIG_VSYNC_OPENGL
+/**
+ * Ensure we have a GLX context.
+ */
+static inline bool
+ensure_glx_context(session_t *ps) {
+  // Create GLX context
+  if (!ps->glx_context)
+    glx_init(ps, false);
+
+  return ps->glx_context;
+}
+#endif
+
 static bool
 vsync_drm_init(session_t *ps);
 
@@ -933,12 +1139,24 @@ vsync_opengl_init(session_t *ps);
 static bool
 vsync_opengl_oml_init(session_t *ps);
 
+static bool
+vsync_opengl_swc_init(session_t *ps);
+
+static bool
+vsync_opengl_mswc_init(session_t *ps);
+
 #ifdef CONFIG_VSYNC_OPENGL
 static int
 vsync_opengl_wait(session_t *ps);
 
 static int
 vsync_opengl_oml_wait(session_t *ps);
+
+static void
+vsync_opengl_swc_deinit(session_t *ps);
+
+static void
+vsync_opengl_mswc_deinit(session_t *ps);
 #endif
 
 static void

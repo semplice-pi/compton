@@ -11,9 +11,10 @@ partially doing this out of a desire to learn Xlib.
 
 ## Changes from xcompmgr:
 
-* __inactive window transparency / dimming__
-* __titlebar/frame transparency__ (specified with `-e`)
-* menu transparency (thanks to Dana)
+* OpenGL backend (`--backend glx`), in addition to the old X Render backend.
+* Inactive window transparency (`-i`) / dimming (`--inactive-dim`).
+* Titlebar/frame transparency (`-e`).
+* Menu transparency (`-m`, thanks to Dana).
 * shadows are now enabled for argb windows, e.g. terminals with transparency
 * removed serverside shadows (and simple compositing) to clean the code,
   the only option that remains is clientside shadows
@@ -57,13 +58,13 @@ __R__ for runtime
 * libdrm (B) (Can be disabled with `NO_VSYNC_DRM` at compile time)
 * libGL (B,R) (Can be disabled with `NO_VSYNC_OPENGL` at compile time)
 * libdbus (B,R) (Can be disabled with `NO_DBUS` at compile time)
-* asciidoc (B)
+* asciidoc (B) (and docbook-xml-dtd-4.5, libxml-utils, libxslt, xsltproc, xmlto, etc. if your distro doesn't pull them in)
 
 ### How to build
 
 To build, make sure you have the dependencies above:
 
-``` bash
+```bash
 # Make the main program
 $ make
 # Make the man pages
@@ -76,15 +77,17 @@ $ make install
 
 ## Known issues
 
-* VSync does not work too well. It's widely reported that tearing still happens on the top of the screen. I do not know how to fix the issue.
+* Our [FAQ](https://github.com/chjj/compton/wiki/faq) covers some known issues.
+
+* VSync does not work too well. You may check the [VSync Guide](https://github.com/chjj/compton/wiki/vsync-guide) for how to get (possibly) better effects.
 
 * If `--unredir-if-possible` is enabled, when compton redirects/unredirects windows, the screen may flicker. Using `--paint-on-overlay` minimizes the problem from my observation, yet I do not know if there's a cure.
 
 * compton may not track focus correctly in all situations. The focus tracking code is experimental. `--use-ewmh-active-win` might be helpful.
 
-* Compton may give ugly shadow to windows with ARGB background if `-z` is enabled, because compton cannot determine their real shapes. One may have to disable shadows on those windows with window-type-specific settings in configuration file or `--shadow-exclude`.
+* The performance of blur under X Render backend might be pretty bad. OpenGL backend could be faster.
 
-* The performance of blurring is terrible, probably because of a problem in the X Render implementation. Its behavior is driver-dependent: With nvidia-drivers it works but there are strange 1px lines remaining when you operate on windows (not sure if it's a bug in compton or in the driver); with nouveau it's utterly broken.
+* With `--blur-background` you may sometimes see weird lines around damaged area. `--resize-damage YOUR_BLUR_RADIUS` might be helpful in the case.
 
 ## Usage
 
@@ -98,7 +101,7 @@ Note a sample configuration file `compton.sample.conf` is included in the reposi
 
 * Our (semi?) official IRC channel is #compton on FreeNode.
 
-* Some information is available on the wiki, including (and presently, only includes) a FAQ.
+* Some information is available on the wiki, including [FAQ](https://github.com/chjj/compton/wiki/faq), [VSync Guide](https://github.com/chjj/compton/wiki/vsync-guide), and [Performance Guide](https://github.com/chjj/compton/wiki/perf-guide).
 
 ## License
 

@@ -99,7 +99,18 @@ struct _c2_l {
   enum {
     C2_L_PUNDEFINED,
     C2_L_PID,
+    C2_L_PX,
+    C2_L_PY,
+    C2_L_PX2,
+    C2_L_PY2,
+    C2_L_PWIDTH,
+    C2_L_PHEIGHT,
+    C2_L_PWIDTHB,
+    C2_L_PHEIGHTB,
+    C2_L_PBDW,
+    C2_L_PFULLSCREEN,
     C2_L_POVREDIR,
+    C2_L_PARGB,
     C2_L_PFOCUSED,
     C2_L_PWMWIN,
     C2_L_PCLIENT,
@@ -155,12 +166,14 @@ const static c2_l_t leaf_def = C2_L_INIT;
 /// Linked list type of conditions.
 struct _c2_lptr {
   c2_ptr_t ptr;
+  void *data;
   struct _c2_lptr *next;
 };
 
 /// Initializer for c2_lptr_t.
 #define C2_LPTR_INIT { \
   .ptr = C2_PTR_INIT, \
+  .data = NULL, \
   .next = NULL, \
 }
 
@@ -174,7 +187,18 @@ typedef struct {
 // Predefined targets.
 const static c2_predef_t C2_PREDEFS[] = {
   [C2_L_PID         ] = { "id"                , C2_L_TCARDINAL  , 0  },
+  [C2_L_PX          ] = { "x"                 , C2_L_TCARDINAL  , 0  },
+  [C2_L_PY          ] = { "y"                 , C2_L_TCARDINAL  , 0  },
+  [C2_L_PX2         ] = { "x2"                , C2_L_TCARDINAL  , 0  },
+  [C2_L_PY2         ] = { "y2"                , C2_L_TCARDINAL  , 0  },
+  [C2_L_PWIDTH      ] = { "width"             , C2_L_TCARDINAL  , 0  },
+  [C2_L_PHEIGHT     ] = { "height"            , C2_L_TCARDINAL  , 0  },
+  [C2_L_PWIDTHB     ] = { "widthb"            , C2_L_TCARDINAL  , 0  },
+  [C2_L_PHEIGHTB    ] = { "heightb"           , C2_L_TCARDINAL  , 0  },
+  [C2_L_PBDW        ] = { "border_width"      , C2_L_TCARDINAL  , 0  },
+  [C2_L_PFULLSCREEN ] = { "fullscreen"        , C2_L_TCARDINAL  , 0  },
   [C2_L_POVREDIR    ] = { "override_redirect" , C2_L_TCARDINAL  , 0  },
+  [C2_L_PARGB       ] = { "argb"              , C2_L_TCARDINAL  , 0  },
   [C2_L_PFOCUSED    ] = { "focused"           , C2_L_TCARDINAL  , 0  },
   [C2_L_PWMWIN      ] = { "wmwin"             , C2_L_TCARDINAL  , 0  },
   [C2_L_PCLIENT     ] = { "client"            , C2_L_TWINDOW    , 0  },

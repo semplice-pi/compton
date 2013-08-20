@@ -6,6 +6,7 @@ CC ?= gcc
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 MANDIR ?= $(PREFIX)/share/man/man1
+APPDIR ?= $(PREFIX)/share/applications
 
 PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr
 LIBS = -lm -lrt
@@ -38,6 +39,7 @@ endif
 
 # ==== DRM VSync ====
 ifeq "$(NO_VSYNC_DRM)" ""
+  INCS += $(shell pkg-config --cflags libdrm)
   CFG += -DCONFIG_VSYNC_DRM
 endif
 
@@ -46,6 +48,16 @@ ifeq "$(NO_VSYNC_OPENGL)" ""
   CFG += -DCONFIG_VSYNC_OPENGL
   # -lGL must precede some other libraries, or it segfaults on FreeBSD (#74)
   LIBS := -lGL $(LIBS)
+  OBJS += opengl.o
+  ifeq "$(NO_VSYNC_OPENGL_GLSL)" ""
+    CFG += -DCONFIG_VSYNC_OPENGL_GLSL
+  endif
+  ifeq "$(NO_VSYNC_OPENGL_FBO)" ""
+    CFG += -DCONFIG_VSYNC_OPENGL_FBO
+  endif
+  ifeq "$(NO_VSYNC_OPENGL_VBO)" ""
+    CFG += -DCONFIG_VSYNC_OPENGL_VBO
+  endif
 endif
 
 # ==== D-Bus ====
@@ -66,7 +78,17 @@ COMPTON_VERSION ?= git-$(shell git describe --always --dirty)-$(shell git log -1
 CFG += -DCOMPTON_VERSION="\"$(COMPTON_VERSION)\""
 
 LDFLAGS ?= -Wl,-O1 -Wl,--as-needed
-CFLAGS ?= -DNDEBUG -O2 -D_FORTIFY_SOURCE=2
+
+ifeq "$(CFG_DEV)" ""
+  CFLAGS ?= -DNDEBUG -O2 -D_FORTIFY_SOURCE=2
+else
+  CC = clang
+  export LD_ALTEXEC = /usr/bin/ld.gold
+  OBJS += backtrace-symbols.o
+  LIBS += -lbfd
+  CFLAGS += -ggdb -Wshadow
+  # CFLAGS += -Weverything -Wno-disabled-macro-expansion -Wno-padded -Wno-gnu
+endif
 
 LIBS += $(shell pkg-config --libs $(PACKAGES))
 INCS += $(shell pkg-config --cflags $(PACKAGES))
@@ -98,9 +120,10 @@ man/%.1.html: man/%.1.asciidoc
 docs: $(MANPAGES) $(MANPAGES_HTML)
 
 install: $(BINS) docs
-	@install -d "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(MANDIR)"
+	@install -d "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(MANDIR)" "$(DESTDIR)$(APPDIR)"
 	@install -m755 $(BINS) "$(DESTDIR)$(BINDIR)"/ 
 	@install -m644 $(MANPAGES) "$(DESTDIR)$(MANDIR)"/
+	@install -m644 compton.desktop "$(DESTDIR)$(APPDIR)"/
 ifneq "$(DOCDIR)" ""
 	@install -d "$(DESTDIR)$(DOCDIR)"
 	@install -m644 README.md compton.sample.conf "$(DESTDIR)$(DOCDIR)"/
@@ -110,6 +133,7 @@ endif
 uninstall:
 	@rm -f "$(DESTDIR)$(BINDIR)/compton" "$(DESTDIR)$(BINDIR)/compton-trans"
 	@rm -f $(addprefix "$(DESTDIR)$(MANDIR)"/, compton.1 compton-trans.1)
+	@rm -f "$(DESTDIR)$(APPDIR)/compton.desktop"
 ifneq "$(DOCDIR)" ""
 	@rm -f $(addprefix "$(DESTDIR)$(DOCDIR)"/, README.md compton.sample.conf cdbus-driver.sh)
 endif
