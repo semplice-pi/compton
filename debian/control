@@ -16,7 +16,7 @@ Package: compton
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, x11-utils
 Conflicts: compton-git
-Description: compton - A compositor for X11
+Description: A compositor for X11
  Compton is a compositor for X, and a fork of xcompmgr-dana.
  .
  It fixes every bug found on it and adds some new features.

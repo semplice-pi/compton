@@ -16,7 +16,11 @@ override_dh_auto_build:
 	dh_auto_build
 	make docs
 
-override_dh_clean:
-	dh_clean
-	rm -f "$(CURDIR)/man/compton.1.xml"
-	rm -f "$(CURDIR)/man/compton.1"
+override_dh_auto_install:
+	dh_auto_install
+	rm -rf "$(CURDIR)/debian/compton/usr/share/applications"
+
+#override_dh_clean:
+#	dh_clean
+#	rm -f "$(CURDIR)/man/compton.1.xml"
+#	rm -f "$(CURDIR)/man/compton.1"

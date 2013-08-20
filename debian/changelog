@@ -1,3 +1,333 @@
+compton (0.0.0~git20130813-1) unstable; urgency=low
+
+  [ Richard Grenville ]
+  * Bug fix #91: Using pkg-config to find drm.h & OpenGL changes
+    - #91: Use pkg-config to find drm.h to avoid issues on FreeBSD. Thanks
+      to hun7err for pointing out and providing patch.
+    - #89: Add default shadow exclusion rule for notify-osd. Thanks to
+      DanielRS.
+    - Check for abundant positional arguments.
+    - Use paint target window (root window / overlay window) instead of
+      ps->reg_win to create GLXContext. (May have negative effects on OpenGL
+      VSync.) Add new OpenGL helpers functions, to prepare for the new
+      OpenGL backend.
+    - Dump more info of a PropertyNotify with DEBUG_EVENTS.
+  * Bug fix #93: Assertion failure when window reparented
+    - Fix an assertion failure that occurs when a window is reparented to
+      the root window then immediately to another window. Thanks to smlx for
+      reporting.
+    - Add extra debugging info for ReparentNotify.
+  * Improvement: ARGB window matching & Enable track_focus with D-Bus
+    - Add predefined matching target "argb" to match ARGB windows.
+    - Make it possible to enable focus tracking on-the-fly with D-Bus
+      method.
+  * Bug fix: Create OpenGL context only after initializing overlay
+    - Create OpenGL context only after initializing overlay, which fixes a
+      bug that --paint-on-overlay does not work with OpenGL VSync. Thanks to
+      tsmithe for reporting. (#7)
+  * Feature: OpenGL backend
+    - Add experimental OpenGL backend (--opengl). --blur-background is
+      currently not possible with this backend, because I'm still trying to
+      find a proper way to do blur with OpenGL. Flipping backend on-the-fly
+      is really hard, so it isn't supported right now. No configuration file
+      option exists to enable this, because it isn't stable enough.
+    - Add `opengl-swc` VSync method that uses SGI_swap_control to control
+      buffer swap, with OpenGL backend. (#7)
+    - Fix a potential read-from-freed-memory issue in paint_all().
+    - Correctly reattach GLX context after fork.
+    - Dump error text in error(). Add GLX error code handling.
+    - Code clean-up.
+    - Known issues: Region operations take a lot of time in glx_render().
+      I'm hesitating about what to do.
+  * Bug fix: GLX backend incompatibility with mesa & others
+    - Fix a bug that glx_bind_pixmap() doesn't work with mesa drivers.
+      Thanks to Janhouse and mkraemer for reporting. (#7)
+    - Use stencil buffer to attempt to eliminate potential double-paint
+      issue in glx_render(). X Fixes doesn't guarantee the rectangles in a
+      region do not overlap, and this may cause some regions to be painted
+      twice, which would be a problem if we are painting transparent things.
+      Now the target window must have a stencil buffer. Compiz uses its own
+      region implementation to deal with this, but as a lightweight
+      compositor we can't really do the same. It may have a positive or
+      negative effort over performance. Callgrind result indicates basically
+      no change in performance, but this may or may not be true.
+    - Correctly distinguish GL extensions and GLX extensions. Sorry. :-D
+    - Handle screen size. Thanks to tsmithe for reporting. (#7)
+    - Rename OpenGL backend to GLX backend, because, we might have a EGL
+      backend someday.
+    - Add configuration file option `backend` to specify backend. Add
+      `backend` to D-Bus `opts_get`.
+    - Add OpenGL shader compilation code, but currently unused.
+    - Minor adjustments.
+    - Known issue: Window content doesn't get updated in VirtualBox,
+      probably because its OpenGL implementation requires constant rebinding
+      of texture. But that's really slow...
+    - Known issue: Blur feature is still unimplemented in GLX backend.
+  * Bug fix: GLX backend incompatibility with VirtualBox & others
+    - GLX backend: Fix a bug that window content does not get updated on
+      VirtualBox, by rebinding texture when window content changes. This may
+      have a negative effect on performance.
+    - GLX backend: Add --glx-no-stencil to restore the old clipping method,
+      just in case.
+    - GLX backend: Apply stricter checks on texture-pixmap binding.
+    - GLX backend: Fix a bug that glx_set_clip() behaves incorrectly when
+      None is passed in.
+    - GLX backend: Use glEnable()/glDisable() to toggle stencil tests, in
+      hope to increase performance.
+    - Move window pixmap/picture fetching to win_paint_win(), in hope to
+      increase performance.
+    - Intersect shadow painting region with its bounding rectangle, in hope
+      to increase performance.
+  * Bug fix: GLX: ARGB texture too dark & Jitter when resize & others
+    - GLX backend: Fix a bug that ARGB windows / shadows are rendered too
+      dark. Thanks to derhass in FreeNode/##opengl for help.
+    - GLX backend: Fix a problem that during window resize the content looks
+      jittering, by letting compton fetch pixmap sizes with XGetGeometry()
+      instead of relying on window width/height, which could be inaccurate
+      during window resize. Negative effect on performance. Thanks to M4he
+      for reporting. (#7)
+    - Add .desktop file. Thanks to quequotion for providing it. (#97)
+    - Avoid checking presence of window pixmap, because they may not exist
+      with very old X Composite implementations.
+    - Add workaround for a strange window restack issue when compton
+      receieves a ConfigureNotify with non-existent new above window.
+    - Add debugging function hexdump(). Extra sanity checks on various
+      places.
+  * Improvement: GLX: Use SCISSOR_TEST instead of STENCIL_TEST when possible
+    - GLX backend: Use GL_SCISSOR_TEST instead of STENCIL_TEST if there's
+      only one rectangle in glx_set_clip(). Profiling with gDebugger shows a
+      10% performance improvement.
+    - Add .desktop installation rules. (#97)
+  * Improvement: --glx-copy-from-front & benchmark mode
+    - GLX backend: Add --glx-copy-front, which copies all unmodified regions
+      from front buffer to back buffer instead of redrawing the whole
+      screen. Unfortunately, probably because glCopyPixels() isn't usually
+      well-optimized on graphic cards, this option appears very unstable in
+      its effect: Over 20% boost in performance when only 1/4 of the screen
+      is modified, but 10% decrease when the whole screen is. Thus, not
+      enabled by default.
+    - GLX backend: Add glx_blur_dst(), to prepare for the background blur
+      feature. It currently is capable to modify background in the desired
+      way, but the core blur shader is absent. glConvolution2D() seemingly
+      relies entirely on CPU and has horrifying performance. I've hesitating
+      about whether I should use ARB assembly language or GLSL for the
+      shader.
+    - GLX backend: Invert y-axis GL matrix. It's upside-down previously
+      because that's what dcompmgr uses. Seemingly a "normal" y-axis is
+      required for glCopyPixels() to operate correctly.
+    - GLX backend: Fix some GLX_TEXTURE_RECTANGLE compatibility issues.
+      Still, not actually tested.
+    - Add benchmark mode (--benchmark & --benchmark-wid).
+    - Misc changes.
+  * Feature #69: GLX: Blur background
+    - GLX backend: Add blur background support using a GLSL shader. Only
+      tested with nvidia-drivers-313.26. Known to cause quite some decrease
+      in performance (~10%?).
+    - Detach shaders in glx_create_program(). Misc changes.
+  * Improvement: --glx-use-copysubbuffermesa
+    - GLX backend: Add --glx-use-copysubbuffermesa, to use
+      MESA_copy_sub_buffer to do partial screen update. Huge performance
+      boost on mesa drivers for partial screen updates, but does not work
+      for nvidia-drivers and may break VSync. Automagically overrides
+      --glx-copy-from-front.
+    - Add rect_is_fullscreen() to reuse code. Misc changes.
+  * Bug fix: Incorrect handling when a window is placed on bottom
+    - Fix a bug that ConfigureNotify placing a window in bottom
+      (ConfigureNotify with .new_above == 0) is not correctly handled,
+      introduced in 1a88e3d0c5.
+  * Improvement: --blur-background-exclude #98 & MESA_swap_control & others
+    - Add --blur-background-exclude. (#98)
+    - Add `opengl-mswc` VSync, which uses MESA_swap_control instead of
+      SGI_swap_control. I don't expect it to perform better than
+      SGI_swap_control, though.
+    - Update CMakeLists.txt .
+    - Add a few targets for D-Bus `win_get`. Misc changes.
+    - Known issue: Apparently I've forgotten implementing --inactive-dim on
+      GLX backend... Silly me.
+  * Bug fix: GLX: Fix --inactive-dim & fix color inversion
+    - GLX backend: Fix broken --inactive-dim.
+    - GLX backend: Fix bugs when inverting colors of windows. Thanks to
+      madsy and neure for help.
+    - GLX backend: Lift `glx_no_stencil` restriction from glx_init_blur().
+      It still probably won't work, but the user can try.
+    - XRender backend: Use XRenderFillRectangles() instead of
+      XRenderComposite() to do dimming.
+  * Feature #4: Default active window opacity
+    - Add default active window opacity (--active-opacity). (#4)
+    - Add win_focusin and win_focusout D-Bus signals.
+  * Misc: Workaround for some missing definitions
+    - Add workarounds for missing GL_TEXTURE_RECTANGLE and PictOpDifference
+      definitions in broken GL headers / old X Composite headers.
+  * Improvement: GLX: Cache region contents & --glx-no-rebind-pixmap
+    - Cache region contents in is_region_empty(), mostly useful only for GLX
+      backend to save one roundtrip to X.
+    - GLX backend: Add --glx-no-rebind-pixmap, which prevents rebinding of
+      GLX texture to pixmap on content change. It doesn't work on some
+      drivers, but it saves some CPU on those where it does.
+    - Wrap XFree() with a new function cxfree() since its man page claims
+      NULL pointers are not acceptable (although in fact it does...).
+    - Use macro to save some code in get_cfg(). Code clean-up.
+  * Bug fix: GLX: Fix dim and blur with --glx-no-stencil
+    - GLX backend: Fix broken dim and blur with --glx-no-stencil when
+      dealing with shaped windows.
+    - GLX backend: Cache region contents and do a local region intersection
+      instead of using XFixesIntersectRegion(). Drastic reduction in CPU
+      usage for --glx-no-stencil. Now --glx-no-stencil substantially
+      outperforms (~15%) normal mode.
+    - Use macros to reuse paint-in-region code in opengl.c . Add new type
+      "reg_data_t" to store XserverRegion cache.
+  * Improvement: --glx-swap-method & --fade-exclude
+    - GLX backend: Add --glx-swap-method, to reduce painting region if the
+      driver uses exchange or copy buffer swaps. Untested.
+    - Add --fade-exclude, to disable fading on specific windows based on
+      some conditions. Untested.
+    - Expose GLX backend options through configuration file. Add fetching of
+      GLX backend options through D-Bus.
+    - Use NULL pointer instead of element count to delimit string arrays in
+      parse_vsync()/parse_backend()/parse_glx_swap_method().
+    - Add documentation about "wintypes" section in configuration file.
+  * Misc: Fix wrong description & DEBUG_GLX_ERR
+    - Fix description of "opengl" VSync.
+    - Add DEBUG_GLX_ERR to check for OpenGL errors.
+    - Update man page.
+  * Improvement: --blur-kern
+    - Add blur convolution kernel customization, --blur-kern. The format is
+      a bit tricky so be sure to read the description in `compton -h`. Not
+      much tests received.
+    - GLX backend: Tolerate missing GLSL uniforms for strangely shaped
+      convolution kernel.
+    - Fix a memory leak that blur-background blacklist is not freed.
+  * Improvement: Enhance --glx-swap-method
+    - Enhance --glx-swap-method to support longer buffers ages (3-6), and
+      automatic buffer age detection via GLX_EXT_buffer_age.
+  * Misc: Fix gcc error.
+    Fix gcc compilation error about "initializer element is not constant".
+  * Improvement: --resize-damage
+    - Add --resize-damage to enlarge/shrink repaint region by a specific
+      number of pixels, used for solving the line corruption issue with
+      blur. Thanks to Nuck and jerri in #104 for reporting.
+    - Fix the memory leak of blur shader string.
+  * Bug fix: Fix --resize-damage
+    - Fix --resize-damage. I forgot to shrink the painting region back when
+      actually copying to destination.
+    - Include extra pixels around the blur texture to avoid some possible
+      small issues, if --resize-damage is positive.
+    - Known issue: Line artifacts may still appear with --dbe (X Render
+      backend) or --glx-swap-method (GLX backend). I doubt if there's way to
+      fix this without very inefficient mechanisms.
+  * Bug fix: Fix a BadRegion error with --glx-use-copysubbuffermesa.
+    Just a small and mostly harmless issue. Sorry, didn't test throughly.
+  * Improvement: Add predefined blur kernels
+    - Add a few predefined blur kernels, requested by jerri in #104.
+    - Add compton-convgen.py to generate blur kernels.
+  * Misc: Validate wallpaper pixmap & Documentation update
+    - Split Pixmap validation out to validate_pixmap(). Validate wallpaper
+      Pixmap as well.
+    - Update README.md and man page.
+  * Misc: Documentation update
+    - Just fix some small issues in README.md .
+
+  [ Christopher Jeffrey ]
+  * compton-trans: consistency, better bash practices, refactor.
+  * compton-trans: more consistency.
+  * compton-trans: cleanup. add remove-prop option.
+  * compton-trans: improve option parsing.
+  * compton-trans: add a 'get' option.
+  * compton-trans: minor. consistency.
+  * compton-trans: use a different workaround with getopts.
+  * compton-trans: use getopt instead of getopts.
+  * Revert "compton-trans: use getopt instead of getopts."
+    This reverts commit 80a3c805619fcec158259f68ad966308712b83f9.
+  * compton-trans: allow long option names.
+  * compton-trans: add reset option.
+  * compton-trans: ensure wid format. misc.
+    xwininfo falls back to cursor selection if the window ID is formatted
+    improperly.
+
+  [ Richard Grenville ]
+  * Imp: Fix GL_TEXTURE_RECTANGLE & Enhance --glx-copy-from-front
+    - Fix GL_TEXTURE_RECTANGLE support. Thanks to amonakov for guides.
+      (#107)
+    - Enhance --glx-copy-from-front to improve performance and make it work
+      with --glx-swap-method, copied from kwin patch. Thanks to bwat47 for
+      info. (#107)
+    - Add texture2Doffset() support in blur GLSL shader. Thanks to amonakov
+      for advice. No visible benefit here, though. (#107)
+    - Only limited tests are done and I'm super sleepy. Bugs expected
+  * Misc: Add DEBUG_GLX_PAINTREG
+    - GLX: Add DEBUG_GLX_PAINTREG, for debugging painting region issues, for
+      p4ddy's problem.
+  * Bug fix: Compilation failure with NO_LIBCONFIG / NO_C2
+    - Fix compilation failure with NO_LIBCONFIG or NO_C2. Thanks to
+      Spaulding for reporting.
+  * Misc: Small fix for regex in compton-trans
+  * Misc: Add DEBUG_GLX_MARK & Misc
+    - GLX backend: Add DEBUG_GLX_MARK, to add GL marks around functions with
+      glStringMarkerGREMEDY(), and mark frame termination with
+      glFrameTerminatorGREMEDY().
+    - Print output of `compton -h` to stdout. (#110)
+    - GLX backend: Strip out elements with factor 0 in GLSL blur code.
+      Thanks to jrfonseca for guides. (#107)
+  * Imp: Multi-pass blur & D-Bus fading control
+    - Add multipass blur support. Note GLX Framebuffer support is required.
+      My benchmark shows multipass blur brings 5% performance boost for X
+      Render backend (3x3box). On GLX backend it brings 10% performance
+      boost for 5x5box but negatively affects performance for 3x3box. Thanks
+      to jrfonseca for advice. (#107)
+    - GLX backend: Cache blur texture for each window, for a 12% performance
+      boost.
+    - Add D-Bus fading control. Thanks to yulan6248 for testing. (#112)
+    - Fix FAQ link in README.md. Thanks to lorenzos for report. (#111)
+    - Correctly deinitialize VSync on on-the-fly VSync method switch.
+    - X Render backend: Normalize blur kernel.
+    - Code clean-up.
+    - Known issue: Linear corruption on border of a window may appear with X
+      Render multi-pass blur. Possible to fix but probably not worthwhile.
+  * Feature #113: Set opacity based on conditions
+    - Add --opacity-rule, which sets opacity based on conditions, as
+      requested by zabbal. (#113)
+    - Add a data field for each condition.
+    - Correct the FAQ link in README.md. Silly me.
+    - Code clean-up.
+  * Feature #116: Shadow exclusion region
+    - Add --shadow-exclude-reg, which excludes certain regions on the screen
+      to have shadows painted in. (#116)
+    - Adjust session initialization order. Now X root and screen info and
+      basic X extensions are available in configuration parsing step.
+  * Misc: --paint-exclude & #119
+    - Add --paint-exclude to prevent certain windows from being painted, for
+      debugging purposes.
+    - Add predefined matching target "x", "y", "width", "height", "widthb",
+      "heightb", "border_width", and "fullscreen".
+    - Fix bug #119, wrong man page install dir in CMake configuration.
+      Thanks to sstewartgallus for reporting.
+  * Misc: OpenGL 3.0 compatibility & misc
+    - Fix OpenGL 3.0 compatibility by changing glFramebufferTexture() to
+      glFramebufferTexture2D(). Thanks to danfe for suggestion!
+    - Add notification about DocBook toolchina dependencies. Thanks to
+      danfe. (#121)
+  * Bug fix #124: GLX: Missing check on FBConfig X visual depth
+    - Check FBConfig X visual depth, like Compiz, to fix issues with
+      nvidia-drivers-325.08 . Thanks to guotsuan for reporting.
+  * Improvement #41: Enable/disable redirection through D-Bus
+    - Add "redirected_force" to D-Bus opts_get to forcefully
+      redirect/unredirect windows.
+    - Add D-Bus method "repaint", to, namely, repaint the screen.
+  * Misc: stoppaint_force & Documentation update
+    - Add stoppaint_force option, controlled via D-Bus, to stop painting
+      completely, which may look better than unredirecting the screen,
+      sometimes. (#41)
+    - Add x2, y2 matching targets.
+    - Update documentation.
+  * Misc #134: Fix compton.desktop.
+    Fix some minor issues in compton.desktop. Thanks to pvanek for
+    reporting.
+
+  [ Eugenio Paolantonio (g7) ]
+  * New git snapshot.
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Tue, 20 Aug 2013 13:18:56 +0200
+
 compton (0.0.0~git20130205-5) unstable; urgency=low
 
   * Going mad... added xmlto and dblatex to Build-Depends.
